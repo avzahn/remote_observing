@@ -1,44 +1,55 @@
 import datetime
 import pytz
 from copy import copy
+from sys import maxint
+
+"""
+shifts are UTC localized datetime objects
+
+"""
+
+class schedule_manager(object):
+	def __init__(self, schedule):
+		self.schedule = schedule
+	def 
+
+
 
 class schedule(dict):
 	"""
 	Indexed by datetime objects which specify the shift, and valued
 	by observer objects that specify the observer
 	"""
-	def __init__(self, 	gcalendar = None,
-						gsheet = None,
-						shifts = None,
-						observers = None):
+	def __init__(self, shifts, observers):
 		
 		self.observers = observers
 		
 		for shift in shifts:
-			self[shift] = None		
+			self[shift] = None
+
+		# sort in ascending karmic order
+		self.observers.sort(key = lambda x: x.karma)
 		
-		if gsheet != None:
-			self.gpull()
-			self.gsheet = gsheet
-			
-		if gcalendar != None:
-			self.gcalendar = gcalendar
+		self.unassigned_observers = copy(self.observers)
+		self.unfilled_shifts = self.keys()
+		self.weekend_shifts = [shift for shift in self if is_weekend(shift)]
+		self.weekday_shifts = [shift for shift in self if is_weekday(shift)]
+
+		self.can_weekend = [obs for obs in observers if is_weekday(obs.last())]
+
+		# default karma values to award for shifts. These will be 
+		# ignored if an observer chooses to specify a different value
 		
-	def gpush(self):
-		"""
-		Push a new google calendar
-		"""
-		pass
-		
-	def gpull(self):
-		"""
-		Pull new availability information and last weeks handoff information
-		from a google sheet
-		"""
-		pass		
-	
-	def update(self):
-		pass
+		# karma equal or greater to this corresponds to a shift
+		# for which someone is available only if that shift cannot
+		# be filled any other way
+		self.maybe_karma = 50
+
+		self.weekend_karma = 25
+		self.weekday_karma = 10
+
+	def schedule(self):
+		return self.schedule_v1()	
 	
 	def shift_to_string(shift):
 		pass
@@ -50,78 +61,129 @@ class schedule(dict):
 		"""
 		return the shift schedule as a mostly human readable string
 		"""
-		pass
-				
+		text = ""
+
+		for obs in self.observers:
+
+			line = obs.name + " " + self.shift_to_string(obs.next_shift) + "\n"
+			text += line
+
+		if len(self.unfilled_shifts) > 0: 
+
+			text += "\n unfilled shifts:\n"
+
+			for shift in self.unfilled_shifts:
+
+				text += self.shift_to_string(shift) + "\n"
+
+		return text
+
 	def assign(self, shift, obs):
 		
 		self[shift] = obs
 		obs.assign(shift)
-		
-	def minimize_karma(self, observers, shift):
+
+		self.unfilled_shifts.remove(shift)
+		self.unassigned_observers.remove(obs)
+
+		if is_weekday(shift):
+			self.weekday_shifts.remove(shift)
+		else:
+			self.weekend_shifts.remove(shift)
+
+	def minimize_karma(self, observers, shift, desperate = False):
 		"""
-		Find the observer who requires the least karma to do a given shift
+		Find the observer who requires the least karma to do a given shift. If 
+		the desperation parameter is false, add the constraint that the observer
+		is considered unavailable if they need more than the desperation limit
+		of karma to do a shift
+
+		Breaks degeneracies by how often an observer has had a given shift
 		"""
-				
+
+		candidates = []
+		candidate_karma = maxint
+
+		for obs in observers:
+			karma = obs.availability[shift]
+			if karma < candidate_karma:
+				if karma > 0:
+					if desperate == True:
+						candidate = obs
+						candidate_karma = karma
+					if desperate == False:
+						if karma < self.maybe_karma:
+							candidate = obs
+							candidate_karma = karma
+			
+		return candidate		
+
 	def schedule_v1(self):
 
-		# sort in ascending karmic order
-		self.observers.sort(key = lambda x: x.karma)
-		
-		unassigned_observers = copy(self.observers)
-		unfilled_shifts = self.keys()
-		weekend_shifts = [shift for shift in self if is_weekend(shift)]
-		weekday_shifts = [shift for shift in self if is_weekday(shift)]
-		
-		# try to pass off the weekend shifts on the lowest karma
+	# try to pass off the weekend shifts on the lowest karma
 		# observers first
-		
-		for obs in copy(unassigned_observers):
-			
-			# look for someone who hasn't done a weekend
-			# the previous week
-			if is_weekday(obs.last()):
+
+		for shift in copy(self.weekend_shifts):
+
+			# recall this is sorted in ascending karmic order
+			for obs in copy(unassigned_observers):
 				
 				shift = obs.minimize_karma(weekend_shifts)
-				
+
 				if shift != None:
-					
-					self.assign(shift,obs)
-					weekend_shifts.remove(shift)
-					unfilled_shifts.remove(shift)
-					unassigned_observers.remove(obs)					
+					self.assign(shift,obs)			
 						
-		if len(weekend_shifts) > 0:
+		if len(self.weekend_shifts) > 0:
 			
 			# someone will have to do a weekend shift two weeks
 			# consecutively
 			
-			shift = obs.minimize_karma(weekend_shifts)
+			for shift in copy(self.weekend_shifts):
+
+				# make a weak attempt at minimizing global unhappiness
+				obs = self.minimize_karma(self.unassigned_observers, shift)
 				
-			if shift != None:
+				if obs != None:
 					
-				self.assign(shift,obs)
-				weekend_shifts.remove(shift)
-				unfilled_shifts.remove(shift)
-				unassigned_observers.remove(obs)		
-						
+					self.assign(shift,obs)
+
+
+		if len(self.weekend_shifts) > 0:
+
+			# we'll have to reach into the set of people who are available
+			# only if necessary
+			for shift in copy(self.weekend_shifts):
+
+				# make a weak attempt at minimizing global unhappiness
+				obs = self.minimize_karma(self.unassigned_observers, shift, desperate = True)
+				
+				if obs != None:
+					
+					self.assign(shift,obs)
+
+
 		# now fill the weekday shifts
 		
-		for obs in copy(unassigned_observers):
+		for obs in copy(self.unassigned_observers):
 			
-			# again do this in ascending karmic order
-			
-			for shift in copy(weekday_shifts):
-				
-						
-						
-			
-				
-				
-			
-		
-			
-			
-						
+			# again do this karmic order
+			 shift = obs.minimize_karma(weekday_shifts)
+
+			# notice that unless an observer's last weekday
+			# shift was marked available only if necessary,
+			# that shift will default to having slightly lower
+			# than the default weekday karma
+
+			if shift != None:
+				self.assign(shift,obs)
+
+
+		if len(self.weekday_shifts) > 0:
+
+			# look for people who are available only if necessary
+
+			for shift in copy(self.weekend_shifts):
+				obs = self.minimize_karma(self.unassigned_observers,shift, desperate = True)
 			
 def is_weekend(shift):
 	
@@ -136,9 +198,26 @@ def is_weekend(shift):
 	
 def is_weekday(shift):
 	
-	if shift.weekday() < 5:
-		return True
-	return False
+	return !(is_weekend(shift))
+
+def shift_compare(shift1, shift2, locale):
+	"""
+	Return 1 if the day, hour, and minute of two shifts
+	are the same in a given locale, given by a pytz.timezone,
+	and 0 otherwise
+	"""
+
+	s1 = locale.localize(shift1)
+	s2 = locale.localize(shift2)
+
+	a = [s1.weekday(), s1.hour, s1.minute]
+	b = [s2.weekday(), s2.hour, s2.minute]
+
+	
+
+
+
+
 
 class observer(object):
 	def __init__(self):
@@ -180,23 +259,49 @@ class observer(object):
 		for entry in self.history.sort():
 			if is_weekday(entry):
 				return entry
+
+
+	def break_karmic_degeneracy(self, shifts):
+		"""
+		Finds the shift that this observer has done most commonly
+		in the past month
+		"""
+
+		self.history.sort(reverse = True)
+
+		if len(self.history) >= 4:
+			history = self.history[0:3]
+		
+		else:
+			history = self.history[0:len(self.history)-1]
+
+
+
+
+
+
 				
-	def minimize_karma(self, shifts):
+	def minimize_karma(self, shifts, desperate = False, maybe_karma = None):
 		"""
 		For a given list of shifts, return the shift that gives the
 		least nonzero karma
 		"""
 		
-		running_min = 0
+		running_min = maxint
 		minimal_shift = None
 		
-		for shift in shifts[1:]:
+		for shift in shifts:
 			
 			karma = self.availability[shift]
 			if karma > 0:
 				if karma < running_min:
-					running_min = karma
-					minimal_shift = shift
+					if desperate == True:
+						running_min = karma
+						minimal_shift = shift
+					if desperate == False:
+						if karma < maybe_karma:
+							running_min = karma
+							minimal_shift = shift
 				
 		return minimal_shift
 		
