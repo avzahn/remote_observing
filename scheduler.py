@@ -57,15 +57,8 @@ class schedule(dict):
 		m0, m1 = shift[0].minute, shift[1].minute
 		d0, d1 = shift[0].weekday(), shift[1].weekday()
 		
-		day_string = {0:'Monday',
-						1:'Tuesday',
-						2:'Wednesday',
-						3:'Thursday',
-						4:'Friday',
-						5:'Saturday',
-						6:'Sunday'}
-						
-		return 
+		if d0 == d1:
+			s = shift[0].strftime( "%a %I:%M %p") +
 			
 	def text(self):
 		"""
