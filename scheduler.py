@@ -4,7 +4,7 @@ from copy import copy
 from sys import maxint
 
 """
-shifts are UTC localized datetime objects
+shifts are UTC localized datetime object (start,end) tuples
 
 """
 
@@ -52,10 +52,20 @@ class schedule(dict):
 		return self.schedule_v1()	
 	
 	def shift_to_string(shift):
-		pass
-	
-	def string_to_shift(string):
-		pass
+		
+		h0, h1 = shift[0].hour, shift[0].hour
+		m0, m1 = shift[0].minute, shift[1].minute
+		d0, d1 = shift[0].weekday(), shift[1].weekday()
+		
+		day_string = {0:'Monday',
+						1:'Tuesday',
+						2:'Wednesday',
+						3:'Thursday',
+						4:'Friday',
+						5:'Saturday',
+						6:'Sunday'}
+						
+		return 
 			
 	def text(self):
 		"""
@@ -109,19 +119,31 @@ class schedule(dict):
 			if karma < candidate_karma:
 				if karma > 0:
 					if desperate == True:
-						candidate = obs
+						candidates.append(obs)
 						candidate_karma = karma
 					if desperate == False:
 						if karma < self.maybe_karma:
-							candidate = obs
+							candidates.append(obs)
 							candidate_karma = karma
 			
-		return candidate		
-
+		return self.break_karmic_degeneracy(candidates)
+		
+	def break_karmic_degeneracy(self, shift, observers):
+		
+		frequency = dict([ (obs,0) for obs in observers  ])
+		
+		for obs in frequency:
+			
+			hist = obs.last_n(4)
+			for h in hist:
+				frequency[obs] += shift_compare(shift,h)
+				
+		return max(frequency, key=frequency.get)
+		
 	def schedule_v1(self):
 
 	# try to pass off the weekend shifts on the lowest karma
-		# observers first
+	# observers first
 
 		for shift in copy(self.weekend_shifts):
 
@@ -147,7 +169,6 @@ class schedule(dict):
 					
 					self.assign(shift,obs)
 
-
 		if len(self.weekend_shifts) > 0:
 
 			# we'll have to reach into the set of people who are available
@@ -160,7 +181,6 @@ class schedule(dict):
 				if obs != None:
 					
 					self.assign(shift,obs)
-
 
 		# now fill the weekday shifts
 		
@@ -186,12 +206,16 @@ class schedule(dict):
 				obs = self.minimize_karma(self.unassigned_observers,shift, desperate = True)
 			
 def is_weekend(shift):
+	"""
+	For the moment, only test the start time
+	of a shift for weekendness
+	"""
 	
-	if shift.weekday() > 4:
+	if shift[0].weekday() > 4:
 		return True
-	if shift.weekday = 4:
+	if shift[0].weekday = 4:
 		# Friday nights count as weekends
-		if shift.hour > 16
+		if shift[0].hour > 16
 			return True
 		
 	return False
@@ -210,14 +234,16 @@ def shift_compare(shift1, shift2, locale):
 	s1 = locale.localize(shift1)
 	s2 = locale.localize(shift2)
 
-	a = [s1.weekday(), s1.hour, s1.minute]
-	b = [s2.weekday(), s2.hour, s2.minute]
-
-	
+	a = [s1[0].weekday(), s1[0].hour, s1[0].minute, s1[1].weekday(), s1[1].hour, s1[1].minute]
+	b = [s2[0].weekday(), s2[0].hour, s2[0].minute, s2[1].weekday(), s2[1].hour, s2[1].minute]
 
 
-
-
+	# in principle we could generalize to return a number
+	# that is a function of the similarity between 
+	# the two shifts
+	if a == b:
+		return 1
+	return 0
 
 class observer(object):
 	def __init__(self):
@@ -250,16 +276,31 @@ class observer(object):
 		
 	def last(self):
 		try:
-			return self.history[-1]
+			return copy(self.history).sort()[-1]
 		except:
 			return None
 			
 	def last_weekday(self):
 		
-		for entry in self.history.sort():
+		for entry in copy(self.history).sort(reverse = True):
 			if is_weekday(entry):
 				return entry
+				
+	def last_n(self,n):
+		"""
+		return a list of the last n an observer has done,
+		or fewer if there are fewer than n shifts
+		"""
+		
+		self.history.sort(reverse = True)
 
+		if len(self.history) >= n:
+			history = self.history[0:n-1]
+		
+		else:
+			history = self.history[0:len(self.history)-1]
+			
+		return history
 
 	def break_karmic_degeneracy(self, shifts):
 		"""
@@ -267,19 +308,15 @@ class observer(object):
 		in the past month
 		"""
 
-		self.history.sort(reverse = True)
-
-		if len(self.history) >= 4:
-			history = self.history[0:3]
+		history = self.last_n(4)
+			
+		frequency = dict([ (s, 0) for s in shifts ])
 		
-		else:
-			history = self.history[0:len(self.history)-1]
-
-
-
-
-
-
+		for s in frequency:
+			for h in history:
+				frequency[s] += shift_compare(h,s)
+				
+		return max(frequency, key=frequency.get)
 				
 	def minimize_karma(self, shifts, desperate = False, maybe_karma = None):
 		"""
@@ -288,7 +325,7 @@ class observer(object):
 		"""
 		
 		running_min = maxint
-		minimal_shift = None
+		minimal_shift = []
 		
 		for shift in shifts:
 			
@@ -297,11 +334,11 @@ class observer(object):
 				if karma < running_min:
 					if desperate == True:
 						running_min = karma
-						minimal_shift = shift
+						minimal_shift.append(shift)
 					if desperate == False:
 						if karma < maybe_karma:
 							running_min = karma
-							minimal_shift = shift
+							minimal_shift.append(shift)
 				
-		return minimal_shift
+		return self.break_karmic_degeneracy(minimal_shift)
 		
