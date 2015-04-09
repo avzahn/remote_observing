@@ -58,7 +58,14 @@ class schedule(dict):
 		d0, d1 = shift[0].weekday(), shift[1].weekday()
 		
 		if d0 == d1:
-			s = shift[0].strftime( "%a %I:%M %p") +
+			a = shift[0].strftime( "%a %I:%M %p")
+			b = shift[1].strftime( "%I:%M %p %Z")
+		else:
+			a = shift[0].strftime( "%a %I:%M %p")
+			b = shift[1].strftime( "%a %I:%M %p %Z")
+
+
+		return a + "-" + b
 			
 	def text(self):
 		"""
@@ -260,9 +267,14 @@ class observer(object):
 		
 		# list of shifts this observer has completed
 		self.history = None
+		# make sure it's in reverse time order, with the most recent
+		# shifts first
+		self.history.sort(reverse = True)
 		
 		# the next shift
 		self.next_shift = None
+
+
 		
 	def assign(self, shift):
 		self.next_shift = shift
@@ -275,7 +287,7 @@ class observer(object):
 			
 	def last_weekday(self):
 		
-		for entry in copy(self.history).sort(reverse = True):
+		for shift in self.history:
 			if is_weekday(entry):
 				return entry
 				
@@ -284,8 +296,6 @@ class observer(object):
 		return a list of the last n an observer has done,
 		or fewer if there are fewer than n shifts
 		"""
-		
-		self.history.sort(reverse = True)
 
 		if len(self.history) >= n:
 			history = self.history[0:n-1]
@@ -293,7 +303,7 @@ class observer(object):
 		else:
 			history = self.history[0:len(self.history)-1]
 			
-		return history
+		return copy(history)
 
 	def break_karmic_degeneracy(self, shifts):
 		"""
