@@ -8,19 +8,15 @@ shifts are UTC localized datetime object (start,end) tuples
 
 """
 
-class schedule_manager(object):
-	def __init__(self, schedule):
-		self.schedule = schedule
-	def 
-
-
-
 class schedule(dict):
 	"""
 	Indexed by datetime objects which specify the shift, and valued
 	by observer objects that specify the observer
 	"""
-	def __init__(self, shifts, observers):
+	def __init__(self, shifts, observers, locale, dst):
+
+		self.locale = locale
+		self.dst = dst
 		
 		self.observers = observers
 		
@@ -32,8 +28,8 @@ class schedule(dict):
 		
 		self.unassigned_observers = copy(self.observers)
 		self.unfilled_shifts = self.keys()
-		self.weekend_shifts = [shift for shift in self if is_weekend(shift)]
-		self.weekday_shifts = [shift for shift in self if is_weekday(shift)]
+		self.weekend_shifts = [shift for shift in self if is_weekend(shift, locale, dst)]
+		self.weekday_shifts = [shift for shift in self if is_weekday(shift, locale, dst)]
 
 		self.can_weekend = [obs for obs in observers if is_weekday(obs.last())]
 
@@ -51,7 +47,9 @@ class schedule(dict):
 	def schedule(self):
 		return self.schedule_v1()	
 	
-	def shift_to_string(shift):
+	def shift_to_string(_shift,locale):
+
+		shift = locale.localize(_shift)
 		
 		h0, h1 = shift[0].hour, shift[0].hour
 		m0, m1 = shift[0].minute, shift[1].minute
@@ -205,7 +203,7 @@ class schedule(dict):
 			for shift in copy(self.weekend_shifts):
 				obs = self.minimize_karma(self.unassigned_observers,shift, desperate = True)
 			
-def is_weekend(shift):
+def is_weekend(shift, locale, dst):
 	"""
 	For the moment, only test the start time
 	of a shift for weekendness
@@ -220,9 +218,9 @@ def is_weekend(shift):
 		
 	return False
 	
-def is_weekday(shift):
+def is_weekday(shift, locale, dst):
 	
-	return !(is_weekend(shift))
+	return !(is_weekend(shift,locale,dst))
 
 def shift_compare(shift1, shift2, locale):
 	"""
