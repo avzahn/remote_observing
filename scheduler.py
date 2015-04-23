@@ -3,32 +3,14 @@ import pytz
 from copy import copy
 from sys import maxint
 
-"""
-shifts are UTC localized datetime object (start,end) tuples
-
-"""
-
-def dt_eq(dt0,dt1):
-
-    if dt0.tzname != dt1.tzname:
-        return False
-    if dt0.year != dt1.year:
-        return False
-    if dt0.month != dt1.month:
-        return False
-    if dt0.day != dt1.day:
-        return False
-    if dt0.hour != dt1.hour:
-        return False
-    if dt0.minute != dt1.minute:
-        return False
-    if dt0.second != dt1.second:
-        return False
-    if dt0.microsecond != dt1.microsecond:
-        return False
-
-
 class shift_t(object):
+    """
+    A hashable, comparable pair of datetime objects
+    representing the start and end of a shift. Note that
+    whoever creates this is responsible for localizing 
+    the datetimes, and that the schedule class assumes
+    UTC locaization.
+    """
     def __init__(self, start, end):
         self.start = start
         self.end = end
@@ -40,23 +22,66 @@ class shift_t(object):
     def __hash__(self):
         return hash(self.start)
 
+    @classmethod
+    def eq(cls,dt0,dt1, attrs = None):
+        """
+        Determine if two datetimes occur at the
+        same point in time
+        """
+
+        if attrs == None:
+
+         attrs = ['tzname',
+                'year',
+                'day',
+                'hour',
+                'minute',
+                'second',
+                'microsecond']
+
+        for attr in attrs:
+            if getattr(dt0,attr) != getattr(dt1,attr):
+                return False
+        return True
+
+    @classmethod
+    def similar(cls,dt0,dt1):
+        """
+        Determine if two datetimes occur at the
+        same point in a weekly schedule.
+
+        Correct localization is up to the caller
+        """
+        
+        if dt0.weekday() != dt1.weekday():
+            return False
+        if dt0.hour != dt1.hour:
+            return False
+
+        return True
+
     def __eq__(self,other):
 
         if not isinstance(other,shift_t):
             return False
 
-        a = dt_eq(self.start,other.start)
-        b = dt_eq(self.end,other.end)
+        a = shift_t.eq(self.start,other.start)
+        b = shift_t.eq(self.end,other.end)
 
         if a and b:
             return True
-        return False 
+        return False
+
+    def __repr__(self):
+        a = self.start.strftime("%a %d %I:%M %p")
+        b = self.end.strftime("%a %d %I:%M %p")
+        return a + " - " + b
 
 
 class schedule(dict):
     """
     Indexed by datetime objects which specify the shift, and valued
-    by observer objects that specify the observer
+    by observer objects that specify the observer. Expects UTC datetimes.
     """
     def __init__(self, shifts, observers, locale, dst):
 
@@ -327,15 +352,6 @@ class schedule(dict):
 
                 print "not found"
 
-
-
-        
-
-
-
-
-
-
     def unfillable_shifts(self):
 
         unfillable = []
@@ -365,8 +381,6 @@ class schedule(dict):
                 must_trade.append(obs)
         return must_trade
 
-
-
     def trade_v1(self,observers):
         """
         Second attempt at not having any double shifts. Pass through
@@ -374,8 +388,7 @@ class schedule(dict):
         of trades that increases the number of filled shifts
         """
         pass
-
-            
+           
 def is_weekend(_shift, locale, dst):
     """
     For the moment, only test the start time
