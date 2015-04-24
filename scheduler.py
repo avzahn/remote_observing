@@ -1,92 +1,14 @@
 import datetime
 import pytz
-from copy import copy
+from copy import copy, deepcopy
 from sys import maxint
-
-class shift_t(object):
-    """
-    A hashable, comparable pair of datetime objects
-    representing the start and end of a shift. Note that
-    whoever creates this is responsible for localizing 
-    the datetimes, and that the schedule class assumes
-    UTC locaization.
-    """
-    def __init__(self, start, end):
-        self.start = start
-        self.end = end
-    def __getitem__(self,i):
-        if i == 0:
-            return self.start
-        if i == 1:
-            return self.end
-    def __hash__(self):
-        return hash(self.start)
-
-    @classmethod
-    def eq(cls,dt0,dt1, attrs = None):
-        """
-        Determine if two datetimes occur at the
-        same point in time
-        """
-
-        if attrs == None:
-
-         attrs = ['tzname',
-                'year',
-                'day',
-                'hour',
-                'minute',
-                'second',
-                'microsecond']
-
-        for attr in attrs:
-            if getattr(dt0,attr) != getattr(dt1,attr):
-                return False
-        return True
-
-    @classmethod
-    def similar(cls,dt0,dt1):
-        """
-        Determine if two datetimes occur at the
-        same point in a weekly schedule.
-
-        Correct localization is up to the caller
-        """
-        
-        if dt0.weekday() != dt1.weekday():
-            return False
-        if dt0.hour != dt1.hour:
-            return False
-
-        return True
-
-    def __eq__(self,other):
-
-        if not isinstance(other,shift_t):
-            return False
-
-        a = shift_t.eq(self.start,other.start)
-        b = shift_t.eq(self.end,other.end)
-
-        if a and b:
-            return True
-        return False
-
-    def __repr__(self):
-        a = self.start.strftime("%a %d %I:%M %p")
-        b = self.end.strftime("%a %d %I:%M %p")
-        return a + " - " + b
-
 
 class schedule(dict):
     """
     Indexed by datetime objects which specify the shift, and valued
-    by observer objects that specify the observer. Expects UTC datetimes.
+    by observer objects that specify the observer.
     """
-    def __init__(self, shifts, observers, locale, dst):
-
-        self.locale = locale
-        self.dst = dst
+    def __init__(self, shifts, observers):
         
         self.observers = observers
         
@@ -99,10 +21,10 @@ class schedule(dict):
         
         self.unassigned_observers = copy(self.observers)
         self.unfilled_shifts = self.keys()
-        self.weekend_shifts = [shift for shift in self if is_weekend(shift, locale, dst)]
-        self.weekday_shifts = [shift for shift in self if is_weekday(shift, locale, dst)]
+        self.weekend_shifts = [shift for shift in self if shift.is_weekend()]
+        self.weekday_shifts = [shift for shift in self if shift.is_weekday()]
 
-        self.can_weekend = [obs for obs in observers if is_weekday(obs.last(),locale,dst)]
+        self.can_weekend = [obs for obs in observers if obs.last(1).is_weekday()]
 
 
         # TODO: Find a proper place for this
@@ -112,28 +34,6 @@ class schedule(dict):
     def schedule(self):
         self.schedule_v1()   
     
-    def shift_to_string(self,_shift):
-
-        if _shift == None:
-            return ""
-
-        locale = self.locale
-        dst = self.dst
-
-        shift = (_shift[0].astimezone(locale),_shift[1].astimezone(locale))
-        
-        h0, h1 = shift[0].hour, shift[0].hour
-        m0, m1 = shift[0].minute, shift[1].minute
-        d0, d1 = shift[0].weekday(), shift[1].weekday()
-        
-        if d0 == d1:
-            a = shift[0].strftime( "%a %d %I:%M %p")
-            b = shift[1].strftime( "%I:%M %p %Z")
-        else:
-            a = shift[0].strftime( "%a %d %I:%M %p")
-            b = shift[1].strftime( "%a %d %I:%M %p %Z")
-
-
         return a + "-" + b
             
     def text(self):
@@ -142,15 +42,11 @@ class schedule(dict):
         """
         text = ""
 
-        for obs in self.observers:
+        shifts = sorted(self.keys)
 
-            line = obs.name + "  ::   "
-
-            for next_shift in obs.next_shift:
-
-                line += self.shift_to_string(next_shift) + " || "
-
-            line += "\n"
+        for shift in shifts:
+            obs = self[shift]
+            line = "%s ::  %s \n"%(obs.name, str(shift))
 
             text += line
 
@@ -166,7 +62,7 @@ class schedule(dict):
 
         text += "\n----unfillable shifts:----\n\n"
         for shift in unfillable:
-                text += self.shift_to_string(shift) + "\n"
+                text += str(shift) + "\n"
 
 
         """
@@ -214,7 +110,7 @@ class schedule(dict):
                         candidates.append(obs)
                         candidate_karma = karma
                     if desperate == False:
-                        if karma < self.maybe_karma:
+                        if karma < obs.maybe_karma:
                             candidates.append(obs)
                             candidate_karma = karma
             
@@ -229,23 +125,14 @@ class schedule(dict):
         
         for obs in frequency:
             
-            hist = obs.last_n(4)
+            hist = obs.last(4)
             for h in hist:
-                frequency[obs] += shift_compare(shift,h)
+                frequency[obs] += shift_t.similar(shift,h)
                 
         return max(frequency, key=frequency.get)
 
     def schedule_v1(self):
         self.first_pass_v1()
-
-        must_trade = self.must_trade()
-        
-        if len(must_trade) > 0:
-
-            self.trade_v1(must_trade)
-
-        self.second_pass_v1()
-    
         
     def first_pass_v1(self):
         """
@@ -317,41 +204,6 @@ class schedule(dict):
             for shift in copy(self.weekend_shifts):
                 obs = self.minimize_karma(self.unassigned_observers,shift, desperate = True)
 
-    def second_pass_v1(self):
-
-        can_weekend = copy(self.can_weekend)
-        self.unassigned_observers = copy(self.observers)
-
-        for obs in can_weekend:
-
-            try:
-                if is_weekend(obs.next_shift[-1],self.locale,self.dst):
-                    can_weekend.remove(obs)
-            except:
-                pass
-
-        for shift in copy(self.weekend_shifts):
-
-            obs = self.minimize_karma(can_weekend, shift, desperate = True)
-
-            if obs != None:
-                self.assign(shift,obs)
-                print obs.name
-            else:
-                print "not found"
-
-        for shift in copy(self.weekday_shifts):
-
-            obs = self.minimize_karma(self.unassigned_observers, shift, desperate = True)
-
-            if obs != None:
-                self.assign(shift,obs)
-                print obs.name
-
-            else:
-
-                print "not found"
-
     def unfillable_shifts(self):
 
         unfillable = []
@@ -368,85 +220,9 @@ class schedule(dict):
                 unfillable.append(shift)
         return unfillable
 
-
-    def must_trade(self):
-
-        must_trade = []
-
-        for obs in self.unassigned_observers:
-            k = 0
-            for shift in self.unfilled_shifts:
-                k += obs.availability[shift]
-            if k == 0:
-                must_trade.append(obs)
-        return must_trade
-
-    def trade_v1(self,observers):
-        """
-        Second attempt at not having any double shifts. Pass through
-        all of the unassigned observers and attempt to execute a sequence
-        of trades that increases the number of filled shifts
-        """
-        pass
-           
-def is_weekend(_shift, locale, dst):
-    """
-    For the moment, only test the start time
-    of a shift for weekendness
-    """
-    
-    if _shift == None:
-        return False
-
-    dt0 = copy(_shift.start)
-    dt1 = copy(_shift.end)
-
-    shift = shift_t( dt0.astimezone(locale), dt1.astimezone(locale))
-
-    locale.normalize(shift.start)
-    locale.normalize(shift.end)
-
-
-    if shift[0].weekday() > 4:
-        return True
-    if shift[0].weekday() == 4:
-        # Friday nights count as weekends
-        if shift[0].hour > 16:
-            return True
-        
-    return False
-    
-def is_weekday(shift, locale, dst):
-    
-    return not(is_weekend(shift,locale,dst))
-
-def shift_compare(shift1, shift2, locale, dst):
-    """
-    Return 1 if the day, hour, and minute of two shifts
-    are the same in a given locale, given by a pytz.timezone,
-    and 0 otherwise
-    """
-
-    s1 = locale.localize(shift1, is_dst =  dst)
-    s2 = locale.localize(shift2, is_dst = dst)
-
-    a = [s1[0].weekday(), s1[0].hour, s1[0].minute, s1[1].weekday(), s1[1].hour, s1[1].minute]
-    b = [s2[0].weekday(), s2[0].hour, s2[0].minute, s2[1].weekday(), s2[1].hour, s2[1].minute]
-
-
-    # in principle we could generalize to return a number
-    # that is a function of the similarity between 
-    # the two shifts
-    if a == b:
-        return 1
-    return 0
-
 class observer(object):
-    """
-    remember to add None to history for no shift
-    """
 
-    def __init__(self):
+    def __init__(self, maybe_karma = 26):
         """
         The schedule class is responsible for most of the initialization,
         all we do here is declare some attributes
@@ -466,44 +242,32 @@ class observer(object):
         self.karma = 0
         
         # list of shifts this observer has completed
-        self.history = []
-        # make sure it's in reverse time order, with the most recent
-        # shifts first
-        self.history.sort(reverse = True)
+        _self.history = []
         
         # the next shift
-        self.next_shift = []
+        self.next_shift = None
 
+        self.maybe_karma = maybe_karma
 
-        # default karma values to award for shifts. These will be 
-        # ignored if an observer chooses to specify a different value
-        
-        # karma equal or greater to this corresponds to a shift
-        # for which someone is available only if that shift cannot
-        # be filled any other way
-        self.maybe_karma = 50
+    @property
+    def history(self):
+        self._history.sort(reverse=True)
+        return self._history
 
-        self.weekend_karma = 25
-        self.weekday_karma = 10
+    @history.setter
+    def history(self,value):
+        self._history = sorted(value,reverse = True)
 
-
-        
     def assign(self, shift):
-        self.next_shift.append(shift)
-        
-    def last(self):
-        try:
-            return copy(self.history).sort()[-1]
-        except:
-            return None
+        self.next_shift = shift
             
     def last_weekday(self):
         
         for shift in self.history:
-            if is_weekday(entry):
-                return entry
+            if shift.is_weekday:
+                return deepcopy(shift)
                 
-    def last_n(self,n):
+    def last(self,n = 1):
         """
         return a list of the last n an observer has done,
         or fewer if there are fewer than n shifts
@@ -518,12 +282,14 @@ class observer(object):
         else:
             history = self.history[0:len(self.history)-1]
             
-        return copy(history)
+        return deepcopy(history)
 
     def break_karmic_degeneracy(self, shifts):
         """
         Finds the shift that this observer has done most commonly
         in the past month
+
+        Expects a list of shift_t's
         """
 
         history = self.last_n(4)
@@ -537,7 +303,7 @@ class observer(object):
 
         for s in frequency:
             for h in history:
-                frequency[s] += shift_compare(h,s)
+                frequency[s] += shift_t.similar(h,s)
 
         return max(frequency, key=frequency.get)
                 
@@ -564,10 +330,6 @@ class observer(object):
                             minimal_shift.append(shift)
                 
         return self.break_karmic_degeneracy(minimal_shift)
-
-
-    def weekend_viability(self):
-        pass
 
 
         
