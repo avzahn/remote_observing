@@ -63,7 +63,7 @@ class shift_t(object):
         return True
 
     @classmethod
-    def similar(cls,dt0,dt1, locale = utc):
+    def similar(cls,dt0,dt1,locale):
         """
         Determine if two utc datetimes occur at the
         same point in a weekly schedule.
@@ -79,13 +79,11 @@ class shift_t(object):
         diff += dt0.hour - dt1.hour
         diff += (dt0.minute - dt0.minute)/60.
 
-        if abs(diff) <= 1:
+        if abs(diff) <= 2:
             return 1
 
         return 0
-
-
-
+        
     def __eq__(self,other):
         """
         shift_t comparison function used for key matching
@@ -103,24 +101,30 @@ class shift_t(object):
             return True
         return False
 
-    def is_weekend(self):
+    def is_weekend(self,locale):
+
+        s = self.start.astimezone(locale)
         
-        if self.start.weekday() > 4:
+        if s.weekday() > 4:
             return True
-        if self.start.weekday() == 4:
+        if s.weekday() == 4:
             # Friday nights count as weekends
-            if self.start.hour > 14:
+            if s.hour > 14:
                 return True
 
         return False
 
-    def is_weekday(self):
+    def is_weekday(self,locale):
 
-        return not(self.is_weekend())
+        return not(self.is_weekend(locale))
 
-    def __str__(self):
+    def __str__(self, locale = None):
 
-        s,e = self.start, self.end
+        if locale != None:
+            s = self.start.astimezone(locale)
+            e = self.end.astimezone(locale)
+        else:
+            s,e = self.start, self.end
         
         h0, h1 = s.hour, e.hour
         m0, m1 = s.minute, e.minute
@@ -133,19 +137,21 @@ class shift_t(object):
             a = s.strftime( "%a %d %I:%M %p")
             b = e.strftime( "%a %d %I:%M %p %Z")
 
+        return a + " - " + b
+
     def __repr__(self):
         a = self.start.strftime("%a %d %I:%M %p")
         b = self.end.strftime("%a %d %I:%M %p")
         return a + " - " + b
 
     def __lt__(self,other):
-        return self.start < other
+        return self.start < other.start
 
     def __gt__(self,other):
-        return self.start > other
+        return self.start > other.start
 
     def __le__(self,other):
-        return self.start <= other
+        return self.start <= other.start
 
     def __ge__(self,other):
-        return self.start >= other
+        return self.start >= other.start
