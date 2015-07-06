@@ -142,17 +142,22 @@ def handoff_dict(fname):
 def finalize_observer(obs,handoff):
 
     for shift in obs.availability:
-        for t in handoff[obs.name.lower().rstrip()]:
 
-            obs.history.append(t)
-
-            if shift_t.similar(shift.end,t.end,pacific):
-                # we really should be giving karma
-                # based on the availability value when
-                # the shift ocurred...
-                # TODO: save availabilities to a name indexed
-                # file for this purpose
-                obs.karma +=  obs.availability[shift]
+        try:
+            for t in handoff[obs.name.lower().rstrip()]:
+    
+                obs.history.append(t)
+    
+                if shift_t.similar(shift.end,t.end,pacific):
+                    # we really should be giving karma
+                    # based on the availability value when
+                    # the shift ocurred...
+                    # TODO: save availabilities to a name indexed
+                    # file for this purpose
+                    obs.karma +=  obs.availability[shift]
+                    
+        except:
+            print 'finalize observer: %s not found in handoff' % (obs.name)
 
 def finalize_observers(handoff,observers):
     """
@@ -166,25 +171,24 @@ def main():
     """
     Create, fill, and output a schedule
     """
-    shifts = gen_shifts(2015,4,29,True)
+    shifts = gen_shifts(2015,7,8,True)
 
     observers = init_observers('availability.csv',shifts)
-
-    with open('asdf','w') as f:
-        for obs in observers:
-            print >>f, obs.name, obs.availability
-
 
     handoff = handoff_dict('handoff.csv')
 
     finalize_observers(handoff,observers)
 
     sch = schedule(shifts,observers,pacific)
+
     sch.schedule()
 
     with open('sch.txt','w') as f:
 
         print >>f, sch.text()
+
+    for shift in sorted(sch.keys()):
+        print str(shift), sch[shift].name
 
 
 if __name__ == "__main__":

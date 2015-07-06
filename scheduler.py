@@ -43,6 +43,7 @@ class schedule(dict):
             if len(hist) == 0:
 
                 print 'no history found for %s' % (obs.name)
+                can_weekend.append(obs)
 
             else:
 
@@ -131,7 +132,7 @@ class schedule(dict):
         return self.break_karmic_degeneracy(shift,candidates)
         
     def break_karmic_degeneracy(self, shift, observers):
-
+        """
         if len(observers) == 0:
             return None
         
@@ -141,9 +142,12 @@ class schedule(dict):
             
             hist = obs.last(4)
             for h in hist:
-                frequency[obs] += shift_t.similar(shift,h)
-                
+                frequency[obs] += shift_t.similar(shift.start,h.start,self.locale)
+             
+
         return max(frequency, key=frequency.get)
+        """
+        return observers[0]
 
     def schedule_v1(self):
         self.first_pass_v1()
