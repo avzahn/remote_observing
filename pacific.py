@@ -3,6 +3,8 @@ from scheduler import schedule, observer
 from pytz import utc, timezone
 import datetime
 from re import search
+from sys import argv
+from fix_csv import fix
 
 strptime = datetime.datetime.strptime
 pacific = timezone('US/Pacific')
@@ -171,7 +173,17 @@ def main():
     """
     Create, fill, and output a schedule
     """
-    shifts = gen_shifts(2015,7,8,True)
+    
+    fix("availability.csv")
+    
+#    shifts = gen_shifts(2015,8,5,True)
+
+    if argv[4] == 'True':
+        is_dst = True
+    if argv[4] == 'False':
+        is_dst = False
+
+    shifts = gen_shifts(int(argv[1]),int(argv[2]),int(argv[3]),is_dst)
 
     observers = init_observers('availability.csv',shifts)
 
