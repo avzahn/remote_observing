@@ -3,7 +3,7 @@ import pytz
 from copy import copy, deepcopy
 from sys import maxint
 from shifts import shift_t
-
+import sys
 pacific = pytz.timezone('US/Pacific')
 
 class schedule(dict):
@@ -12,18 +12,18 @@ class schedule(dict):
     by observer objects that specify the observer.
     """
     def __init__(self, shifts, observers, locale):
-        
+
         self.locale = locale
 
         self.observers = observers
-        
+
         for shift in shifts:
 
             self[shift] = None
 
         # sort in ascending karmic order
         self.observers.sort(key = lambda x: x.karma)
-        
+
         self.unassigned_observers = copy(self.observers)
         self.unfilled_shifts = self.keys()
         self.weekend_shifts = [shift for shift in self if shift.is_weekend(self.locale)]
@@ -55,8 +55,8 @@ class schedule(dict):
         return can_weekend
 
     def schedule(self):
-        self.schedule_v1()   
-            
+        self.schedule_v1()
+
     def text(self):
         """
         return the shift schedule as a mostly human readable string
@@ -74,7 +74,7 @@ class schedule(dict):
 
             text += line
 
-        if len(self.unfilled_shifts) > 0: 
+        if len(self.unfilled_shifts) > 0:
 
             text += "\n----unfilled shifts:----\n\n"
 
@@ -91,7 +91,7 @@ class schedule(dict):
         return text
 
     def assign(self, shift, obs):
-        
+
         self[shift] = obs
         obs.assign(shift)
 
@@ -106,7 +106,7 @@ class schedule(dict):
 
     def minimize_karma(self, observers, shift, desperate = False):
         """
-        Find the observer who requires the least karma to do a given shift. If 
+        Find the observer who requires the least karma to do a given shift. If
         the desperation parameter is false, add the constraint that the observer
         is considered unavailable if they need more than the desperation limit
         of karma to do a shift
@@ -128,30 +128,32 @@ class schedule(dict):
                         if karma < obs.maybe_karma:
                             candidates.append(obs)
                             candidate_karma = karma
-            
+
         return self.break_karmic_degeneracy(shift,candidates)
-        
+
     def break_karmic_degeneracy(self, shift, observers):
         """
         if len(observers) == 0:
             return None
-        
+
         frequency = dict([ (obs,0) for obs in observers  ])
-        
+
         for obs in frequency:
-            
+
             hist = obs.last(4)
             for h in hist:
                 frequency[obs] += shift_t.similar(shift.start,h.start,self.locale)
-             
+
 
         return max(frequency, key=frequency.get)
         """
+        if len(observers) == 0:
+            print>>sys.stderr, observers
         return observers[0]
 
     def schedule_v1(self):
         self.first_pass_v1()
-        
+
     def first_pass_v1(self):
         """
         Make an attempt at not assigning any observer more than
@@ -166,12 +168,12 @@ class schedule(dict):
 
             # recall this is sorted in ascending karmic order
             for obs in copy(self.can_weekend):
-                
+
                 shift = obs.minimize_karma(self.weekend_shifts)
 
                 if shift != None:
-                    self.assign(shift,obs)          
-                        
+                    self.assign(shift,obs)
+
 
         if len(self.weekend_shifts) > 0:
 
@@ -181,15 +183,15 @@ class schedule(dict):
 
                 # make a weak attempt at minimizing global unhappiness
                 obs = self.minimize_karma(self.can_weekend, shift, desperate = True)
-                
+
                 if obs != None:
-                    
+
                     self.assign(shift,obs)
 
         # now fill the weekday shifts
-        
+
         for obs in copy(self.unassigned_observers):
-            
+
             # again do this karmic order
             shift = obs.minimize_karma(self.weekday_shifts)
 
@@ -232,25 +234,25 @@ class observer(object):
         The schedule class is responsible for most of the initialization,
         all we do here is declare some attributes
         """
-        
+
         self.locale = locale
 
         # dict mapping a shift to the quantity of karma an observer gains
-        # from that shift. A shift with a karma value of zero indicates 
+        # from that shift. A shift with a karma value of zero indicates
         # nonavailability.
         self.availability = {}
-        
+
         # should be a string
         self.name = None
-        self.email = None       
-        
+        self.email = None
+
         # scheduler will attempt to keep karma as close to equal across
         # all observers as possible
         self.karma = 0
-        
+
         # list of shifts this observer has completed
         self._history = []
-        
+
         # the next shift
         self.next_shift = None
 
@@ -277,7 +279,7 @@ class observer(object):
     def assign(self, shift):
         self.next_shift = shift
 
-                
+
     def last(self,n = 1):
         """
         return a list of the last n an observer has done,
@@ -289,10 +291,10 @@ class observer(object):
 
         if len(self.history) >= n:
             history = self.history[0:n]
-        
+
         else:
             history = self.history[0:len(self.history)-1]
-            
+
         return deepcopy(history)
 
     def break_karmic_degeneracy(self, shifts):
@@ -315,7 +317,7 @@ class observer(object):
             if len(shifts) > 0:
                 return shifts[0]
             return None
-            
+
         frequency = dict([ (s, 0) for s in shifts ])
 
         for s in frequency:
@@ -323,18 +325,18 @@ class observer(object):
                 frequency[s] += shift_t.similar(h.end,s.end,self.locale)
 
         return max(frequency, key=frequency.get)
-                
+
     def minimize_karma(self, shifts, desperate = False):
         """
         For a given list of shifts, return the shift that gives the
         least nonzero karma
         """
-        
+
         running_min = maxint
         minimal_shift = []
-        
+
         for shift in shifts:
-            
+
             karma = self.availability[shift]
             if karma > 0:
                 if karma < running_min:
@@ -345,5 +347,5 @@ class observer(object):
                         if karma < self.maybe_karma:
                             running_min = karma
                             minimal_shift.append(shift)
-                
+
         return self.break_karmic_degeneracy(minimal_shift)
